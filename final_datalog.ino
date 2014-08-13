@@ -22,8 +22,8 @@ File dataFile, logFile;
 String dataBuf = "";
 int lCount = 0, fCount = 1;
 
-const int maxLineCount = 30000;
-const int maxFileCount = 8;
+const int maxLineCount = 60000;
+const int maxFileCount = 4;
 
 byte canDownload[maxFileCount] = { 0 };
 
@@ -49,9 +49,9 @@ byte getLowByte() {
 
 int tempDelay() {
     int data = 0, val;  
-    for(int pin = 22; pin <= 37; pin++) {
+    for(int i = 0; i < 6; i++) {
         val = 1;
-        data |= val << (pin - 22);
+        data |= val << (i);
     }
     return data;
 }
@@ -125,6 +125,18 @@ void sendFastLog() {
     } 
 }
 
+void deleteLogFiles() {
+    SD.remove("log1.txt");
+    SD.remove("log2.txt");
+    SD.remove("log3.txt");
+    SD.remove("log4.txt");
+    SD.remove("log5.txt");
+    SD.remove("log6.txt");
+    SD.remove("log7.txt");
+    SD.remove("log8.txt");
+    delay(1000);  
+}
+
 void setup()
 {
     Serial.begin(115200);       // for debugging
@@ -141,15 +153,6 @@ void setup()
         return;    // init failed
     }
     Serial.println("SUCCESS - SD card initialized.");
-    SD.remove("log1.txt");
-    SD.remove("log2.txt");
-    SD.remove("log3.txt");
-    SD.remove("log4.txt");
-    SD.remove("log5.txt");
-    SD.remove("log6.txt");
-    SD.remove("log7.txt");
-    SD.remove("log8.txt");
-    delay(1000);
     
     for(int pin = 22; pin <= 37; pin++) {
         pinMode(pin, INPUT);      
@@ -180,6 +183,7 @@ void loop()
                     
                     //send data
                     if(request.indexOf("log=f") != -1) {
+                        deleteLogFiles();
                         lCount = 0; 
                         fCount = 1;
                         for(int i = 0; i < maxFileCount; i++) {
