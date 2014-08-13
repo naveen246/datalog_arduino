@@ -77,7 +77,7 @@ void logFastData() {
             logBuf[logBufIndex] = getLowByte();
             logBufIndex++;
             //delay code follows
-            for(int i = 0; i < 8; i++) {
+            for(int i = 0; i < 3; i++) {
                 temp = String(hiByte) + "\t" + tempDelay(); 
             }
             //logFile.write(logBuf[logBufIndex]);
