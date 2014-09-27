@@ -17,13 +17,16 @@ byte logBuf[DATA_BUF_SIZE];
 
 int logBufIndex = 0;
 
+int convertPin = 31;
+int busyPin = 33;
+
 File dataFile, logFile;
 
 String dataBuf = "";
 int lCount = 0, fCount = 1;
 
-const int maxLineCount = 60000;
-const int maxFileCount = 4;
+const int maxLineCount = 240000;
+const int maxFileCount = 1;
 
 byte canDownload[maxFileCount] = { 0 };
 
@@ -56,6 +59,15 @@ int tempDelay() {
     return data;
 }
 
+void startADCConversion() {
+    digitalWrite(convertPin, LOW);   
+    tick++;
+    tick++;
+    tick++;
+    digitalWrite(convertPin, HIGH);
+    while(digitalRead(busyPin) == HIGH);
+}
+
 
 void logFastData() {
     char fileName[9] = { "log1.txt" };
@@ -72,6 +84,7 @@ void logFastData() {
         lCount++;
         String temp = "";
         for(int i = 0; i < 4; i++) {
+            startADCConversion();
             logBuf[logBufIndex] = getHiByte();
             logBufIndex++;
             logBuf[logBufIndex] = getLowByte();
@@ -157,6 +170,9 @@ void setup()
     for(int pin = 22; pin <= 37; pin++) {
         pinMode(pin, INPUT);      
     }
+    pinMode(convertPin, OUTPUT);    
+    pinMode(busyPin, INPUT); 
+    digitalWrite(convertPin, HIGH);
     delay(1000);
     
 }
