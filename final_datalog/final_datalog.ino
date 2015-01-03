@@ -186,6 +186,7 @@ void loop()
             if (client.available()) {   // client data available to read
                 if( client.find("GET ") ) {
                     String request = client.readStringUntil(';');
+                    while(client.read() != -1);
                     Serial.println(request);
                 
                     client.println("HTTP/1.1 200 OK");
@@ -215,7 +216,7 @@ void loop()
                     } else if(request.indexOf("log=n") != -1) {
                         Timer1.attachInterrupt(sendNormalLog).setFrequency(2).start();
                         while(1) {
-                              
+
                         }
                     }
                     break;
