@@ -20,6 +20,7 @@ byte dataWriteBuf[DATA_BUF_SIZE];
 byte dataLogBuf[DATA_BUF_SIZE];
 
 int logBufIndex = 0, lineCount = 0, fileCount = 1, milliVolt_plusOneDigit;
+boolean continueNormalLog = false;
 
 File dataFile, logFile;
 
@@ -136,7 +137,12 @@ void sendNormalLog() {
     logBufIndex = 0;
     int dataCountPerLine = 16;
     fillDataBuffer(dataCountPerLine);
-    client.write(dataLogBuf, logBufIndex);
+    int bytesWritten = client.write(dataLogBuf, logBufIndex);
+    if(bytesWritten < 1) {
+        Serial.println("stop normal log");
+        continueNormalLog = false; 
+        Timer1.detachInterrupt();
+    }
 }
 
 void deleteLogFiles() {
@@ -214,10 +220,17 @@ void loop()
                         delay(1000);
                         sendFastLog();  
                     } else if(request.indexOf("log=n") != -1) {
+                        continueNormalLog = true;
                         Timer1.attachInterrupt(sendNormalLog).setFrequency(2).start();
                         while(1) {
-
+                            if(continueNormalLog) {
+                                Serial.println("continue");
+                            } else {
+                                Serial.println("discontinue");
+                                break;
+                            }  
                         }
+                        Serial.println("stopping normal log");
                     }
                     break;
                 }
@@ -225,5 +238,6 @@ void loop()
         } 
         delay(1);      // give the web browser time to receive the data
         client.stop(); // close the connection
+        Serial.println("client stopped");
     } // end if (client)
 }
