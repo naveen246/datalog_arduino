@@ -7,9 +7,14 @@
 #define BUSY_PIN 13
 #define MAX_FILE_COUNT 1
 #define FAST_LOG_LINES_PER_SEC 2000
+#define MAX_CHANNEL_COUNT 16
+#define FAST_CHANNEL_COUNT 4
+#define MAX_SOLENOID_COUNT 8
 
 //change maxLineCount to get more data. for 2 min data maxLineCount = 240000
 int maxLineCount = 10000;
+
+int fastLogChannels[FAST_CHANNEL_COUNT] = { 0, 1, 2, 3 };
 
 // MAC address from Ethernet shield sticker under board
 byte mac[] = { 0x90, 0xA2, 0xDA, 0x0F, 0x10, 0xCB };
@@ -37,6 +42,33 @@ int tempDelay() {
     return data;
 }
 
+void selectChannel(int channelNum) {
+    if(channelNum < MAX_CHANNEL_COUNT) {
+        int lowPin = 22, hiPin = 28, adjacentPinsGap = 2;
+        for(int pin = lowPin; pin <= hiPin; pin += adjacentPinsGap) {
+            if(channelNum & (1 << (pin - lowPin) / adjacentPinsGap)) {
+                digitalWrite(pin, HIGH);
+            } else {
+                digitalWrite(pin, LOW);  
+            }
+        }
+    }  
+}
+
+void setSolenoids(int solenoids[], int solenoidCount) {
+    int lowPin = 30, highPin = 44, adjacentPinsGap = 2;
+    for(int pin = lowPin; pin <= highPin; pin += adjacentPinsGap) {
+        digitalWrite(pin, LOW);  
+    }
+    for(int i = 0; i < solenoidCount; i++) {
+        int solenoid = solenoids[i];
+        if(solenoid < MAX_SOLENOID_COUNT) {
+            int solenoidPin = solenoid * adjacentPinsGap + lowPin;
+            digitalWrite(solenoidPin, HIGH); 
+        }        
+    }
+}
+
 byte getByte(int lowPin, int hiPin, int adjacentPinsGap) {
     byte data = 0, val;
     for(int pin = lowPin; pin <= hiPin; pin+=adjacentPinsGap) {
@@ -60,6 +92,11 @@ void fillDataBuffer(int dataCountPerLine) {
     int analogValue;
     String temp;
     for(int i = 0; i < dataCountPerLine; i++) {
+        if(dataCountPerLine == MAX_CHANNEL_COUNT) {
+            selectChannel(i);
+        } else {
+            selectChannel(fastLogChannels[i]);
+        }
         while(digitalRead(BUSY_PIN) == HIGH);
         analogValue = (getHiByte() << 8) | getLowByte();
         milliVolt_plusOneDigit = (analogValue * 2279.0 / 32767.0) * 10;
@@ -88,7 +125,7 @@ void logFastData() {
         lineCount++;
         String temp = "";
 
-        int dataCountPerLine = 4;
+        int dataCountPerLine = FAST_CHANNEL_COUNT;
         fillDataBuffer(dataCountPerLine);
 
         if(logBufIndex >= DATA_BUF_SIZE || lineCount >= maxLineCount) {
@@ -135,7 +172,7 @@ void sendFastLog() {
 
 void sendNormalLog() {
     logBufIndex = 0;
-    int dataCountPerLine = 16;
+    int dataCountPerLine = MAX_CHANNEL_COUNT;
     fillDataBuffer(dataCountPerLine);
     int bytesWritten = client.write(dataLogBuf, logBufIndex);
     if(bytesWritten < 1) {
@@ -157,6 +194,37 @@ void deleteLogFiles() {
     delay(1000);  
 }
 
+int stringSplit(String str, String delimiter, int *arr) {
+    int delimiterIndex = str.indexOf(delimiter);
+    int beginIndex = 0;
+    int arrIndex = 0;
+    String subStr;
+    
+    while(delimiterIndex != -1) {
+        subStr = str.substring(beginIndex, delimiterIndex);
+        arr[arrIndex++] = subStr.toInt();
+        beginIndex = delimiterIndex + 1;
+        delimiterIndex = str.indexOf(delimiter, beginIndex);
+    }
+    
+    subStr = str.substring(beginIndex);
+    arr[arrIndex++] = subStr.toInt();
+    return arrIndex;
+}
+
+void setFastLogChannels(String channelsStr) {
+    channelsStr.trim();
+    if(channelsStr.equals("")) return;
+    int channelsArr[MAX_CHANNEL_COUNT] = { 0 };
+    int fastChannelCount = stringSplit(channelsStr, ",", channelsArr);
+    if(fastChannelCount > FAST_CHANNEL_COUNT) return;
+    for(int i = 0; i < FAST_CHANNEL_COUNT; i++) {
+        if(channelsArr[i] < MAX_CHANNEL_COUNT) {
+            fastLogChannels[i] = channelsArr[i];
+        }
+    }
+}
+
 void setup()
 {
     Serial.begin(115200);       // for debugging
@@ -174,8 +242,19 @@ void setup()
     }
     Serial.println("SUCCESS - SD card initialized.");
     
+    //data read pins
     for(int pin = 23; pin <= 53; pin+=2) {
         pinMode(pin, INPUT);      
+    }
+    
+    //channel set pins
+    for(int pin = 22; pin <= 28; pin += 2) {
+        pinMode(pin, OUTPUT);  
+    }
+    
+    //solenoid pins
+    for(int pin = 30; pin <= 44; pin += 2) {
+        pinMode(pin, OUTPUT);  
     }
         
     pinMode(BUSY_PIN, INPUT); 
@@ -204,9 +283,23 @@ void loop()
                     //send data
                     if(request.indexOf("log=f") != -1) {
                         if(request.indexOf("seconds=") != -1) {
-                            int startIndex = request.lastIndexOf('=') + 1;
-                            int seconds = request.substring(startIndex).toInt();
-                            Serial.println(startIndex);
+                            String getParams[3] = { "0", "0", "0" };
+                            int beginIndex = request.indexOf("=");
+                            int endIndex = request.indexOf("&", beginIndex);
+                            int paramsIndex = 0;
+                            while(beginIndex != -1 && paramsIndex < 3) {
+                                beginIndex++;
+                                if(endIndex == -1) {
+                                    getParams[paramsIndex] = request.substring(beginIndex);
+                                    break;
+                                } 
+                                getParams[paramsIndex] = request.substring(beginIndex, endIndex);
+                                beginIndex = request.indexOf("=", endIndex + 1);
+                                endIndex = request.indexOf("&", beginIndex);
+                                paramsIndex++;
+                            }
+                            int seconds = getParams[1].toInt();
+                            setFastLogChannels(getParams[2]);
                             Serial.println(seconds);
                             maxLineCount = seconds * FAST_LOG_LINES_PER_SEC;
                         }
@@ -220,6 +313,16 @@ void loop()
                         delay(1000);
                         sendFastLog();  
                     } else if(request.indexOf("log=n") != -1) {
+                        if(request.indexOf("solenoids=") != -1) {
+                            int startIndex = request.lastIndexOf('=') + 1;
+                            String solenoids = request.substring(startIndex);
+                            solenoids.trim();
+                            if(!solenoids.equals("")) {
+                                int solenoidArr[MAX_SOLENOID_COUNT] = { 0 };
+                                int count = stringSplit(solenoids, ",", solenoidArr);
+                                setSolenoids(solenoidArr, count);
+                            }          
+                        }
                         continueNormalLog = true;
                         Timer1.attachInterrupt(sendNormalLog).setFrequency(2).start();
                         while(1) {
